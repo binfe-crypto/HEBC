@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>שעון עברי</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Hebrew:wght@300;400&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+
+body {
+  background-color: #f5f0e8;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E");
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Noto Serif Hebrew', 'David Libre', 'FrankRuehl', 'Times New Roman', serif;
+  border: 6px solid #1a1a1a;
+  min-height: 100vh;
+  position: relative;
+}
+
+/* Font increased by 56% total: original (1.6, 4.8vw, 3.2rem) → +20% → +30% more = (2.496, 7.488vw, 4.992rem) */
+#clock {
+  width: 50%;
+  text-align: center;
+  line-height: 1.9;
+  font-size: clamp(2.5rem, 7.5vw, 5rem);
+  color: #1a1a1a;
+  letter-spacing: 0.01em;
+  word-spacing: 0.08em;
+  font-weight: 400;
+  opacity: 1;
+  transition: opacity 0.55s ease-in-out;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#clock.fade { opacity: 0; }
+
+/* Night mode — dark background, dimmed text */
+body.night-mode {
+  background-color: #0a0a0a;
+  border-color: #2a2a2a;
+}
+body.night-mode #clock {
+  color: #8a8a8a;
+}
+</style>
+</head>
+<body>
+
+<div id="clock"></div>
+
+<script>
+// ── Wake Lock — keep screen on at full brightness ──
+let wakeLock = null;
+
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      console.log('Wake Lock active — screen will stay on');
+      
+      wakeLock.addEventListener('release', () => {
+        console.log('Wake Lock released');
+      });
+    }
+  } catch (err) {
+    console.log('Wake Lock failed:', err);
+  }
+}
+
+// Re-acquire wake lock when page becomes visible again
+document.addEventListener('visibilitychange', () => {
+  if (wakeLock !== null && document.visibilityState === 'visible') {
+    requestWakeLock();
+  }
+});
+
+// Request wake lock on load
+requestWakeLock();
+
+// ── Toggle Fullscreen on every tap ──
+function toggleFullscreen() {
+  const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement);
+  
+  if (!isFS) {
+    // Enter fullscreen
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+    if (req) {
+      req.call(el).catch(err => console.log('Fullscreen error:', err));
+    }
+  } else {
+    // Exit fullscreen
+    const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
+    if (exit) {
+      exit.call(document).catch(err => console.log('Exit fullscreen error:', err));
+    }
+  }
+}
+
+// Tap anywhere to toggle fullscreen
+document.body.addEventListener('click', toggleFullscreen);
+document.body.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  toggleFullscreen();
+}, { passive: false });
+
+// ── Night Mode (21:00–06:00) ──
+function updateNightMode() {
+  const h = new Date().getHours();
+  const isNight = (h >= 21 || h < 6);
+  document.body.classList.toggle('night-mode', isNight);
+}
+
+// Check every minute
+setInterval(updateNightMode, 60000);
+updateNightMode(); // Initial check
+
+// ── Hebrew tables with full nikud ──
+
+const H = [
+  '',
+  'אַחַת',
+  'שְׁתַּיִם',
+  'שָׁלוֹשׁ',
+  'אַרְבַּע',
+  'חָמֵשׁ',
+  'שֵׁשׁ',
+  'שֶׁבַע',
+  'שְׁמוֹנֶה',
+  'תֵּשַׁע',
+  'עֶשֶׂר',
+  'אַחַת עֶשְׂרֵה',
+  'שְׁתֵּים עֶשְׂרֵה',
+];
+
+const HL = [
+  '',
+  'לְאַחַת',
+  'לִשְׁתַּיִם',
+  'לְשָׁלוֹשׁ',
+  'לְאַרְבַּע',
+  'לְחָמֵשׁ',
+  'לְשֵׁשׁ',
+  'לְשֶׁבַע',
+  'לִשְׁמוֹנֶה',
+  'לְתֵּשַׁע',
+  'לְעֶשֶׂר',
+  'לְאַחַת עֶשְׂרֵה',
+  'לִשְׁתֵּים עֶשְׂרֵה',
+];
+
+const U = ['','אַחַת','שְׁתַּיִם','שָׁלוֹשׁ','אַרְבַּע','חָמֵשׁ','שֵׁשׁ','שֶׁבַע','שְׁמוֹנֶה','תֵּשַׁע'];
+
+function pod(h) {
+  if (h <= 4)              return 'בַּלַּיְלָה';
+  if (h === 5)             return 'לִפְנוֹת בּוֹקֶר';
+  if (h >= 6  && h <= 11) return 'בַּבֹּקֶר';
+  if (h >= 12 && h <= 16) return 'אַחַר הַצָּהֳרַיִם';
+  if (h >= 17 && h <= 20) return 'בָּעֶרֶב';
+  return 'בַּלַּיְלָה';
+}
+
+function mp(m) {
+  if (m === 0) return null;
+
+  const TO = {
+    35: 'עֶשְׂרִים וַחֲמִשָּׁה',
+    40: 'עֶשְׂרִים',
+    45: 'רֶבַע',
+    50: 'עֲשָׂרָה',
+    55: 'חֲמִשָּׁה',
+    59: 'דַּקָּה',
+  };
+  if (TO[m]) return { t: TO[m], to: true };
+
+  if (m === 1)  return { t: 'וְדַקָּה' };
+  if (m === 2)  return { t: 'וּשְׁתֵּי דַּקּוֹת' };
+  if (m === 5)  return { t: 'וַחֲמִשָּׁה' };
+  if (m === 10) return { t: 'וַעֲשָׂרָה' };
+  if (m === 15) return { t: 'וָרֶבַע' };
+  if (m === 20) return { t: 'וְעֶשְׂרִים' };
+  if (m === 30) return { t: 'וָחֵצִי' };
+
+  if (m >= 3  && m <= 9)  return { t: 'וְ' + U[m] + ' דַּקּוֹת' };
+  if (m === 11) return { t: 'וְאַחַת עֶשְׂרֵה דַּקּוֹת' };
+  if (m === 12) return { t: 'וּשְׁתֵּים עֶשְׂרֵה דַּקּוֹת' };
+  if (m === 13) return { t: 'וּשְׁלוֹשׁ עֶשְׂרֵה דַּקּוֹת' };
+  if (m === 14) return { t: 'וְאַרְבַּע עֶשְׂרֵה דַּקּוֹת' };
+  if (m === 16) return { t: 'וְשֵׁשׁ עֶשְׂרֵה דַּקּוֹת' };
+  if (m === 17) return { t: 'וְשֶׁבַע עֶשְׂרֵה דַּקּוֹת' };
+  if (m === 18) return { t: 'וּשְׁמוֹנֶה עֶשְׂרֵה דַּקּוֹת' };
+  if (m === 19) return { t: 'וְתֵּשַׁע עֶשְׂרֵה דַּקּוֹת' };
+
+  if (m >= 21 && m <= 29) return { t: 'עֶשְׂרִים וְ' + U[m-20] };
+  if (m >= 31 && m <= 39) { const u=m-30; return { t: u ? 'שְׁלוֹשִׁים וְ'+U[u] : 'שְׁלוֹשִׁים' }; }
+  if (m >= 41 && m <= 49) { const u=m-40; return { t: u ? 'אַרְבָּעִים וְ'+U[u] : 'אַרְבָּעִים' }; }
+  if (m >= 51 && m <= 58) { const u=m-50; return { t: u ? 'חֲמִשִּׁים וְ'+U[u] : 'חֲמִשִּׁים' }; }
+
+  return null;
+}
+
+function timeStr(h, m) {
+  if (h === 0  && m === 0) return 'חֲצוֹת';
+  if (h === 12 && m === 0) return 'צָהֳרַיִם';
+
+  const h12 = h % 12 || 12;
+  const p = pod(h);
+  const phrase = mp(m);
+
+  if (!phrase) return H[h12] + ' ' + p;
+
+  if (phrase.to) {
+    const nh = (h + 1) % 24;
+    return phrase.t + ' ' + HL[(nh % 12) || 12] + ' ' + pod(nh);
+  }
+
+  const hw = (h === 0) ? H[12] : H[h12];
+  return hw + ' ' + phrase.t + ' ' + p;
+}
+
+// ── DOM ──
+const el = document.getElementById('clock');
+let last = '';
+
+function tick() {
+  const n = new Date();
+  const s = timeStr(n.getHours(), n.getMinutes());
+  if (s === last) return;
+  last = s;
+  el.classList.add('fade');
+  setTimeout(() => { el.textContent = s; el.classList.remove('fade'); }, 570);
+}
+
+const n0 = new Date();
+last = timeStr(n0.getHours(), n0.getMinutes());
+el.textContent = last;
+
+setInterval(tick, 5000);
+setTimeout(() => { tick(); setInterval(tick, 60000); }, (60 - new Date().getSeconds()) * 1000);
+</script>
+</body>
+</html>
