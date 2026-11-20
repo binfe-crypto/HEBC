@@ -208,8 +208,10 @@ async function sync() {
       status = 'טוען תמונה ' + n + ' מתוך ' + list.length + '...';
       if (view === 2 && !pics.length) $('msg').textContent = status;
       try {
-        const r = await (await fetch(u + (u.includes('?') ? '&' : '?') + 'img=' + p.id)).json();
-        if (!r.d) throw new Error('הסקריפט לא החזיר תמונה');
+        const full = u + (u.includes('?') ? '&' : '?') + 'img=' + p.id;
+        const t = await (await fetch(full)).text();
+        let r = {}; try { r = JSON.parse(t); } catch (x) {}
+        if (!r.d) throw new Error('אין תמונה בתשובה. כתובת: ...' + full.slice(-60) + ' | תשובה: ' + t.slice(0, 100));
         await putPic({ id: p.id, u: p.u, b: await shrink(await (await fetch(r.d)).blob()) });
       } catch (e) { lastErr = e.message || String(e); }
     }
