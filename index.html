@@ -181,30 +181,39 @@ async function putPic(o) { const t = await tx('readwrite'); t.objectStore('ph').
 async function delPic(id) { const t = await tx('readwrite'); t.objectStore('ph').delete(id); return new Promise(r => t.oncomplete = r); }
 
 async function shrink(blob) {
-  const bmp = await createImageBitmap(blob), k = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
-  const c = document.createElement('canvas'); c.width = bmp.width * k; c.height = bmp.height * k;
+  let bmp;
+  try { bmp = await createImageBitmap(blob, { resizeWidth: 1280, resizeQuality: 'medium' }); }
+  catch (e) {
+    bmp = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('פענוח התמונה נכשל')); i.src = URL.createObjectURL(blob); });
+  }
+  const k = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
   c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
   return new Promise(r => c.toBlob(r, 'image/jpeg', 0.82));
 }
 
-let syncing = false;
+let syncing = false, status = '', lastErr = '';
 async function sync() {
   const u = CAL();
   if (syncing || !u) return;
-  syncing = true;
+  syncing = true; status = ''; lastErr = '';
   try {
     const list = (await data()).photos || [], have = await allPics();
     const ids = new Set(list.map(p => p.id)), ver = new Map(have.map(h => [h.id, h.u]));
     for (const h of have) if (!ids.has(h.id)) await delPic(h.id);
+    let n = 0;
     for (const p of list) {
+      n++;
       if (ver.get(p.id) === p.u) continue;
+      status = 'טוען תמונה ' + n + ' מתוך ' + list.length + '...';
+      if (view === 2 && !pics.length) $('msg').textContent = status;
       try {
         const r = await (await fetch(u + (u.includes('?') ? '&' : '?') + 'img=' + p.id)).json();
-        if (!r.d) continue;
+        if (!r.d) throw new Error('הסקריפט לא החזיר תמונה');
         await putPic({ id: p.id, u: p.u, b: await shrink(await (await fetch(r.d)).blob()) });
-      } catch (e) {}
+      } catch (e) { lastErr = e.message || String(e); }
     }
-  } catch (e) {}
+  } catch (e) { lastErr = e.message || String(e); }
   syncing = false;
 }
 sync(); setInterval(sync, 30 * 60000);
@@ -215,7 +224,7 @@ async function startGal(noSync) {
   pics = (await allPics()).map(p => p.b).sort(() => Math.random() - .5);
   const pic = $('pic'), msg = $('msg');
   pic.style.display = pics.length ? '' : 'none';
-  msg.textContent = pics.length ? '' : !CAL() ? 'היומן והתמונות עדיין לא הוגדרו' : syncing ? 'טוען תמונות מהתיקייה...' : 'אין תמונות. הוסף תמונות לתיקייה Kiosk בדרייב';
+  msg.textContent = pics.length ? '' : !CAL() ? 'היומן והתמונות עדיין לא הוגדרו' : syncing ? (status || 'טוען תמונות מהתיקייה...') : lastErr ? 'לא ניתן לטעון תמונות: ' + lastErr : 'אין תמונות. הוסף תמונות לתיקייה Kiosk בדרייב';
   if (!pics.length) {
     if (!noSync) sync().then(() => { if (view === 2) startGal(true); });
     return;
