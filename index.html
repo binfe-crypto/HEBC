@@ -3,249 +3,207 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>שעון עברי</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Hebrew:wght@300;400&display=swap" rel="stylesheet">
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
+@font-face { font-family: 'NSH'; src: url('NotoSerifHebrew.woff2') format('woff2'); font-display: swap; }
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { width: 100%; height: 100%; overflow: hidden; }
-
 body {
-  background-color: #f5f0e8;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E");
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: 'Noto Serif Hebrew', 'David Libre', 'FrankRuehl', 'Times New Roman', serif;
-  border: 6px solid #1a1a1a;
-  min-height: 100vh;
-  position: relative;
+  background: #f5f0e8; color: #1a1a1a; border: 6px solid #1a1a1a;
+  font-family: 'NSH', 'Noto Serif Hebrew', 'David Libre', 'FrankRuehl', 'Times New Roman', serif;
+  user-select: none; -webkit-user-select: none; position: relative;
 }
-
-/* Font increased by 56% total: original (1.6, 4.8vw, 3.2rem) → +20% → +30% more = (2.496, 7.488vw, 4.992rem) */
-#clock {
-  width: 50%;
-  text-align: center;
-  line-height: 1.9;
-  font-size: clamp(2.5rem, 7.5vw, 5rem);
-  color: #1a1a1a;
-  letter-spacing: 0.01em;
-  word-spacing: 0.08em;
-  font-weight: 400;
-  opacity: 1;
-  transition: opacity 0.55s ease-in-out;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
+body.night { background: #111; border-color: #2a2a2a; color: #9a9a9a; }
+.v { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; }
+.v.on { display: flex; }
+#clock { width: 88%; text-align: center; line-height: 1.8; font-size: clamp(2.2rem, 7.5vw, 5rem); transition: opacity .55s ease-in-out; }
 #clock.fade { opacity: 0; }
-
-/* Night mode — dark background, dimmed text */
-body.night-mode {
-  background-color: #0a0a0a;
-  border-color: #2a2a2a;
-}
-body.night-mode #clock {
-  color: #8a8a8a;
-}
+#date { margin-top: 1.2rem; font-size: clamp(1.1rem, 3.5vw, 2rem); color: #6b6459; }
+body.night #date { color: #666; }
+#cal { width: 92%; max-height: 92%; overflow: hidden; }
+#cal h3 { font-weight: 400; font-size: clamp(1.1rem, 3.6vw, 1.8rem); color: #6b6459; margin: 1rem 0 .3rem; border-bottom: 1px solid #bbb; }
+#cal p { font-size: clamp(1.1rem, 4vw, 2rem); line-height: 1.5; }
+#cal .t { color: #6b6459; margin-inline-end: .6rem; }
+#cal .m { text-align: center; color: #6b6459; }
+#gal { background: #000; }
+#pic { max-width: 100%; max-height: 100%; object-fit: contain; transition: opacity .6s; }
+#msg { color: #bbb; font-size: 1.4rem; text-align: center; padding: 1rem; }
+#bar { position: absolute; bottom: 10px; display: flex; gap: 10px; }
+#bar button { font: inherit; font-size: 1rem; padding: .5rem 1rem; background: #222; color: #ccc; border: 1px solid #555; border-radius: 8px; }
 </style>
 </head>
 <body>
 
-<div id="clock"></div>
+<div class="v on" id="v0"><div id="clock"></div><div id="date"></div></div>
+<div class="v" id="v1"><div id="cal"></div></div>
+<div class="v" id="gal">
+  <img id="pic" alt="">
+  <div id="msg"></div>
+  <div id="bar">
+    <button id="add">הוספת תמונות</button>
+    <button id="clr">ניקוי</button>
+  </div>
+  <input type="file" id="file" accept="image/*" multiple hidden>
+</div>
 
 <script>
-// ── Wake Lock — keep screen on at full brightness ──
-let wakeLock = null;
+const $ = id => document.getElementById(id);
 
-async function requestWakeLock() {
-  try {
-    if ('wakeLock' in navigator) {
-      wakeLock = await navigator.wakeLock.request('screen');
-      console.log('Wake Lock active — screen will stay on');
-      
-      wakeLock.addEventListener('release', () => {
-        console.log('Wake Lock released');
-      });
-    }
-  } catch (err) {
-    console.log('Wake Lock failed:', err);
-  }
-}
+// ── Wake lock ──
+let wl = null;
+async function lock() { try { if ('wakeLock' in navigator) wl = await navigator.wakeLock.request('screen'); } catch (e) {} }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') lock(); });
+lock();
 
-// Re-acquire wake lock when page becomes visible again
-document.addEventListener('visibilitychange', () => {
-  if (wakeLock !== null && document.visibilityState === 'visible') {
-    requestWakeLock();
-  }
-});
+// ── Night mode (21:00–06:00) ──
+function night() { const h = new Date().getHours(); document.body.classList.toggle('night', h >= 21 || h < 6); }
+setInterval(night, 60000); night();
 
-// Request wake lock on load
-requestWakeLock();
-
-// ── Toggle Fullscreen on every tap ──
-function toggleFullscreen() {
-  const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement);
-  
-  if (!isFS) {
-    // Enter fullscreen
-    const el = document.documentElement;
-    const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
-    if (req) {
-      req.call(el).catch(err => console.log('Fullscreen error:', err));
-    }
-  } else {
-    // Exit fullscreen
-    const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
-    if (exit) {
-      exit.call(document).catch(err => console.log('Exit fullscreen error:', err));
-    }
-  }
-}
-
-// Tap anywhere to toggle fullscreen
-document.body.addEventListener('click', toggleFullscreen);
-document.body.addEventListener('touchend', (e) => {
-  e.preventDefault();
-  toggleFullscreen();
-}, { passive: false });
-
-// ── Night Mode (21:00–06:00) ──
-function updateNightMode() {
-  const h = new Date().getHours();
-  const isNight = (h >= 21 || h < 6);
-  document.body.classList.toggle('night-mode', isNight);
-}
-
-// Check every minute
-setInterval(updateNightMode, 60000);
-updateNightMode(); // Initial check
-
-// ── Hebrew tables with full nikud ──
-
-const H = [
-  '',
-  'אַחַת',
-  'שְׁתַּיִם',
-  'שָׁלוֹשׁ',
-  'אַרְבַּע',
-  'חָמֵשׁ',
-  'שֵׁשׁ',
-  'שֶׁבַע',
-  'שְׁמוֹנֶה',
-  'תֵּשַׁע',
-  'עֶשֶׂר',
-  'אַחַת עֶשְׂרֵה',
-  'שְׁתֵּים עֶשְׂרֵה',
-];
-
-const HL = [
-  '',
-  'לְאַחַת',
-  'לִשְׁתַּיִם',
-  'לְשָׁלוֹשׁ',
-  'לְאַרְבַּע',
-  'לְחָמֵשׁ',
-  'לְשֵׁשׁ',
-  'לְשֶׁבַע',
-  'לִשְׁמוֹנֶה',
-  'לְתֵּשַׁע',
-  'לְעֶשֶׂר',
-  'לְאַחַת עֶשְׂרֵה',
-  'לִשְׁתֵּים עֶשְׂרֵה',
-];
-
+// ── Hebrew time ──
+const H = ['','אַחַת','שְׁתַּיִם','שָׁלוֹשׁ','אַרְבַּע','חָמֵשׁ','שֵׁשׁ','שֶׁבַע','שְׁמוֹנֶה','תֵּשַׁע','עֶשֶׂר','אַחַת עֶשְׂרֵה','שְׁתֵּים עֶשְׂרֵה'];
+const HL = ['','לְאַחַת','לִשְׁתַּיִם','לְשָׁלוֹשׁ','לְאַרְבַּע','לְחָמֵשׁ','לְשֵׁשׁ','לְשֶׁבַע','לִשְׁמוֹנֶה','לְתֵשַׁע','לְעֶשֶׂר','לְאַחַת עֶשְׂרֵה','לִשְׁתֵּים עֶשְׂרֵה'];
 const U = ['','אַחַת','שְׁתַּיִם','שָׁלוֹשׁ','אַרְבַּע','חָמֵשׁ','שֵׁשׁ','שֶׁבַע','שְׁמוֹנֶה','תֵּשַׁע'];
 
 function pod(h) {
-  if (h <= 4)              return 'בַּלַּיְלָה';
-  if (h === 5)             return 'לִפְנוֹת בּוֹקֶר';
-  if (h >= 6  && h <= 11) return 'בַּבֹּקֶר';
-  if (h >= 12 && h <= 16) return 'אַחַר הַצָּהֳרַיִם';
-  if (h >= 17 && h <= 20) return 'בָּעֶרֶב';
+  if (h <= 4) return 'בַּלַּיְלָה';
+  if (h === 5) return 'לִפְנוֹת בּוֹקֶר';
+  if (h <= 11) return 'בַּבֹּקֶר';
+  if (h <= 13) return 'בַּצָּהֳרַיִם';
+  if (h <= 16) return 'אַחַר הַצָּהֳרַיִם';
+  if (h <= 20) return 'בָּעֶרֶב';
   return 'בַּלַּיְלָה';
 }
 
 function mp(m) {
   if (m === 0) return null;
-
-  const TO = {
-    35: 'עֶשְׂרִים וַחֲמִשָּׁה',
-    40: 'עֶשְׂרִים',
-    45: 'רֶבַע',
-    50: 'עֲשָׂרָה',
-    55: 'חֲמִשָּׁה',
-    59: 'דַּקָּה',
-  };
+  const TO = { 35: 'עֶשְׂרִים וַחֲמִשָּׁה', 40: 'עֶשְׂרִים', 45: 'רֶבַע', 50: 'עֲשָׂרָה', 55: 'חֲמִשָּׁה', 59: 'דַּקָּה' };
   if (TO[m]) return { t: TO[m], to: true };
-
-  if (m === 1)  return { t: 'וְדַקָּה' };
-  if (m === 2)  return { t: 'וּשְׁתֵּי דַּקּוֹת' };
-  if (m === 5)  return { t: 'וַחֲמִשָּׁה' };
-  if (m === 10) return { t: 'וַעֲשָׂרָה' };
-  if (m === 15) return { t: 'וָרֶבַע' };
-  if (m === 20) return { t: 'וְעֶשְׂרִים' };
-  if (m === 30) return { t: 'וָחֵצִי' };
-
-  if (m >= 3  && m <= 9)  return { t: 'וְ' + U[m] + ' דַּקּוֹת' };
-  if (m === 11) return { t: 'וְאַחַת עֶשְׂרֵה דַּקּוֹת' };
-  if (m === 12) return { t: 'וּשְׁתֵּים עֶשְׂרֵה דַּקּוֹת' };
-  if (m === 13) return { t: 'וּשְׁלוֹשׁ עֶשְׂרֵה דַּקּוֹת' };
-  if (m === 14) return { t: 'וְאַרְבַּע עֶשְׂרֵה דַּקּוֹת' };
-  if (m === 16) return { t: 'וְשֵׁשׁ עֶשְׂרֵה דַּקּוֹת' };
-  if (m === 17) return { t: 'וְשֶׁבַע עֶשְׂרֵה דַּקּוֹת' };
-  if (m === 18) return { t: 'וּשְׁמוֹנֶה עֶשְׂרֵה דַּקּוֹת' };
-  if (m === 19) return { t: 'וְתֵּשַׁע עֶשְׂרֵה דַּקּוֹת' };
-
-  if (m >= 21 && m <= 29) return { t: 'עֶשְׂרִים וְ' + U[m-20] };
-  if (m >= 31 && m <= 39) { const u=m-30; return { t: u ? 'שְׁלוֹשִׁים וְ'+U[u] : 'שְׁלוֹשִׁים' }; }
-  if (m >= 41 && m <= 49) { const u=m-40; return { t: u ? 'אַרְבָּעִים וְ'+U[u] : 'אַרְבָּעִים' }; }
-  if (m >= 51 && m <= 58) { const u=m-50; return { t: u ? 'חֲמִשִּׁים וְ'+U[u] : 'חֲמִשִּׁים' }; }
-
-  return null;
+  const F = { 1: 'וְדַקָּה', 2: 'וּשְׁתֵּי דַּקּוֹת', 5: 'וַחֲמִשָּׁה', 10: 'וַעֲשָׂרָה', 15: 'וָרֶבַע', 20: 'וְעֶשְׂרִים', 30: 'וָחֵצִי',
+    11: 'וְאַחַת עֶשְׂרֵה דַּקּוֹת', 12: 'וּשְׁתֵּים עֶשְׂרֵה דַּקּוֹת', 13: 'וּשְׁלוֹשׁ עֶשְׂרֵה דַּקּוֹת',
+    14: 'וְאַרְבַּע עֶשְׂרֵה דַּקּוֹת', 16: 'וְשֵׁשׁ עֶשְׂרֵה דַּקּוֹת', 17: 'וְשֶׁבַע עֶשְׂרֵה דַּקּוֹת',
+    18: 'וּשְׁמוֹנֶה עֶשְׂרֵה דַּקּוֹת', 19: 'וְתֵשַׁע עֶשְׂרֵה דַּקּוֹת' };
+  if (F[m]) return { t: F[m] };
+  if (m >= 3 && m <= 9) return { t: 'וְ' + U[m] + ' דַּקּוֹת' };
+  const tens = { 2: 'עֶשְׂרִים', 3: 'שְׁלוֹשִׁים', 4: 'אַרְבָּעִים', 5: 'חֲמִשִּׁים' }[Math.floor(m / 10)];
+  const u = m % 10;
+  return { t: tens + (u ? ' וְ' + U[u] : '') };
 }
+
+// no dagesh in ת after וְ / לְ
+const fix = s => s.replace(/([ול]\u05B0)\u05EA([\u05B0-\u05BB]*)\u05BC/g, '$1ת$2');
 
 function timeStr(h, m) {
-  if (h === 0  && m === 0) return 'חֲצוֹת';
+  if (h === 0 && m === 0) return 'חֲצוֹת';
   if (h === 12 && m === 0) return 'צָהֳרַיִם';
-
-  const h12 = h % 12 || 12;
-  const p = pod(h);
-  const phrase = mp(m);
-
-  if (!phrase) return H[h12] + ' ' + p;
-
-  if (phrase.to) {
-    const nh = (h + 1) % 24;
-    return phrase.t + ' ' + HL[(nh % 12) || 12] + ' ' + pod(nh);
-  }
-
-  const hw = (h === 0) ? H[12] : H[h12];
-  return hw + ' ' + phrase.t + ' ' + p;
+  const h12 = h % 12 || 12, p = pod(h), ph = mp(m);
+  if (!ph) return fix(H[h12] + ' ' + p);
+  if (ph.to) { const nh = (h + 1) % 24; return fix(ph.t + ' ' + HL[nh % 12 || 12] + ' ' + pod(nh)); }
+  return fix(H[h12] + ' ' + ph.t + ' ' + p);
 }
 
-// ── DOM ──
-const el = document.getElementById('clock');
+// ── Clock + date ──
+const clockEl = $('clock'), dateEl = $('date');
 let last = '';
-
+function setDate() { dateEl.textContent = new Date().toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' }); }
 function tick() {
-  const n = new Date();
-  const s = timeStr(n.getHours(), n.getMinutes());
+  const n = new Date(), s = timeStr(n.getHours(), n.getMinutes());
   if (s === last) return;
+  const first = last === '';
   last = s;
-  el.classList.add('fade');
-  setTimeout(() => { el.textContent = s; el.classList.remove('fade'); }, 570);
+  if (first) { clockEl.textContent = s; setDate(); return; }
+  clockEl.classList.add('fade');
+  setTimeout(() => { clockEl.textContent = s; setDate(); clockEl.classList.remove('fade'); }, 570);
+  // nightly refresh at 03:00, once per day
+  const key = n.toDateString();
+  if (n.getHours() === 3 && localStorage.getItem('rl') !== key) { localStorage.setItem('rl', key); location.reload(); }
+}
+tick(); setInterval(tick, 1000);
+
+// ── Views: tap cycles clock → calendar → gallery ──
+let view = 0, idle, galTimer;
+function go(i) {
+  view = i;
+  ['v0', 'v1', 'gal'].forEach((id, k) => $(id).classList.toggle('on', k === i));
+  clearTimeout(idle); clearInterval(galTimer);
+  if (i === 1) loadCal();
+  if (i === 2) startGal();
+  if (i) idle = setTimeout(() => go(0), i === 1 ? 180000 : 600000);
+}
+document.addEventListener('click', e => { if (!e.target.closest('button')) go((view + 1) % 3); });
+
+// ── Calendar (Google Apps Script URL, kept only in this device's storage) ──
+const q = new URLSearchParams(location.search).get('cal');
+if (q) localStorage.setItem('cal', q);
+
+function el(tag, cls, txt) { const e = document.createElement(tag); if (cls) e.className = cls; if (txt) e.textContent = txt; return e; }
+
+async function loadCal() {
+  const box = $('cal'), u = localStorage.getItem('cal');
+  box.replaceChildren();
+  if (!u) { box.append(el('p', 'm', 'היומן עדיין לא הוגדר')); return; }
+  try {
+    const ev = (await (await fetch(u)).json()).sort((a, b) => a.s - b.s).slice(0, 10);
+    if (!ev.length) { box.append(el('p', 'm', 'אין אירועים בימים הקרובים')); return; }
+    const today = new Date().toDateString(), tom = new Date(Date.now() + 864e5).toDateString();
+    let day = '';
+    for (const e of ev) {
+      const d = new Date(e.s), k = d.toDateString();
+      if (k !== day) {
+        day = k;
+        box.append(el('h3', '', k === today ? 'היום' : k === tom ? 'מחר' : d.toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })));
+      }
+      const p = el('p');
+      p.append(el('span', 't', e.a ? 'כל היום' : d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })), document.createTextNode(e.t));
+      box.append(p);
+    }
+  } catch (err) { box.replaceChildren(el('p', 'm', 'לא ניתן לטעון את היומן')); }
 }
 
-const n0 = new Date();
-last = timeStr(n0.getHours(), n0.getMinutes());
-el.textContent = last;
+// ── Gallery: photos stay in this device's browser storage only ──
+const db = () => new Promise((res, rej) => {
+  const r = indexedDB.open('kiosk', 1);
+  r.onupgradeneeded = () => r.result.createObjectStore('p', { autoIncrement: true });
+  r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+});
+const store = async mode => (await db()).transaction('p', mode);
+async function allPics() { const t = await store('readonly'); return new Promise(r => { const q = t.objectStore('p').getAll(); q.onsuccess = () => r(q.result); q.onerror = () => r([]); }); }
+async function addPic(b) { const t = await store('readwrite'); t.objectStore('p').add(b); return new Promise(r => t.oncomplete = r); }
+async function clearPics() { const t = await store('readwrite'); t.objectStore('p').clear(); return new Promise(r => t.oncomplete = r); }
 
-setInterval(tick, 5000);
-setTimeout(() => { tick(); setInterval(tick, 60000); }, (60 - new Date().getSeconds()) * 1000);
+async function shrink(file) {
+  const bmp = await createImageBitmap(file), k = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas'); c.width = bmp.width * k; c.height = bmp.height * k;
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise(r => c.toBlob(r, 'image/jpeg', 0.82));
+}
+
+let pics = [], idx = 0, url = '';
+async function startGal() {
+  try { pics = await allPics(); } catch (e) { pics = []; }
+  const pic = $('pic'), msg = $('msg');
+  msg.textContent = pics.length ? '' : 'אין עדיין תמונות. לחץ על ״הוספת תמונות״';
+  pic.style.display = pics.length ? '' : 'none';
+  if (!pics.length) return;
+  idx = Math.floor(Math.random() * pics.length);
+  const show = () => {
+    pic.style.opacity = 0;
+    setTimeout(() => { if (url) URL.revokeObjectURL(url); url = URL.createObjectURL(pics[idx]); pic.src = url; pic.style.opacity = 1; idx = (idx + 1) % pics.length; }, 600);
+  };
+  show(); galTimer = setInterval(show, 12000);
+}
+
+$('add').onclick = () => $('file').click();
+$('file').onchange = async e => {
+  $('msg').textContent = 'מעבד תמונות...';
+  for (const f of e.target.files) { try { await addPic(await shrink(f)); } catch (err) {} }
+  e.target.value = ''; clearInterval(galTimer); startGal();
+};
+let armed = 0;
+$('clr').onclick = async e => {
+  if (!armed) { armed = 1; e.target.textContent = 'בטוח? לחץ שוב'; setTimeout(() => { armed = 0; e.target.textContent = 'ניקוי'; }, 4000); return; }
+  armed = 0; e.target.textContent = 'ניקוי'; await clearPics(); clearInterval(galTimer); startGal();
+};
 </script>
 </body>
 </html>
